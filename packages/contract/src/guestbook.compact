@@ -1,7 +1,6 @@
 pragma language_version >= 0.16 && <= 0.18;
 
 import CompactStandardLibrary;
-import GuestbookLibrary;
 
 export {Guestbook, GuestbookStatus};
 
@@ -19,6 +18,15 @@ export ledger guests: MerkleTree<100, Bytes<32>>;
 // map with guestbook id and message
 export ledger guestbooksMessages: Map<Bytes<32>, Message>;
 
+struct Guest {
+    id: Bytes<32>;
+}
+
+struct Message {
+    id: Bytes<32>;
+    message: Bytes<32>;
+}
+
 struct Guestbook {
     id: Bytes<32>;
     title: Bytes<32>;
@@ -30,7 +38,18 @@ struct Guestbook {
 
 witness localSecretKey(): Bytes<32>;
 
-witness findMessage(commitment: Bytes<32>): MerkleTreePath<100, Bytes<32>>;
+circuit generateOwnersPK(address: Bytes<32>, sk: Bytes<32>, rand: Bytes<32>): Bytes<32>{
+    return persistentHash<Vector<2, Bytes<32>>>([
+        pad(32, "tokenless:user"),
+        persistentHash<Vector<3, Bytes<32>>>([
+        address, sk, rand, 
+        ])
+    ]);
+}
+
+circuit generateCommit(data: Guest, rand: Bytes<32>): Bytes<32>{
+    return persistentCommit<Guest>(data, rand);
+}
 
 export circuit createGuestbook(
     guestbookTitle: Bytes<32>,
