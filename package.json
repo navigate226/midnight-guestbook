@@ -1,0 +1,25 @@
+{
+  "name": "guestbook",
+  "version": "1.0.0",
+  "license": "MIT",
+  "scripts": {},
+  "private": true,
+  "resolutions": {
+    "@midnight-ntwrk/compact-runtime/@midnight-ntwrk/onchain-runtime": "^0.3.0"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "^0.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/ui",
+    "packages/api",
+    "packages/cli",
+    "packages/contract"
+  ]
+}
