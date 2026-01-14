@@ -1,10 +1,10 @@
 services:
   proof-server:
     container_name: 'guestbook-proof-server'
-    image: "midnight-proof-server:prebaked"
+    image: "midnightnetwork/proof-server:4.0.0"
     command: ["midnight-proof-server", "--network", "undeployed", "--verbose"]
     ports:
-      - "6300"
+      - "6300:6300"
     environment:
       RUST_BACKTRACE: "full"
   

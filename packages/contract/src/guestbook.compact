@@ -2,7 +2,7 @@ pragma language_version >= 0.18.0;
 
 import CompactStandardLibrary;
 
-export {Guestbook, GuestbookStatus};
+export {Guestbook, GuestbookStatus, Message};
 
 enum GuestbookStatus {
     Open,

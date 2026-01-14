@@ -1,10 +1,11 @@
 import {
   Contract,
   Witnesses,
-  GuestbookPrivateState,
   Guestbook,
   GuestbookStatus,
+  Message,
 } from "@guestbook/guestbook-contract";
+import type { GuestbookPrivateState } from "@guestbook/guestbook-contract";
 
 import { MidnightProviders } from "@midnight-ntwrk/midnight-js-types";
 import { type FoundContract } from "@midnight-ntwrk/midnight-js-contracts";
@@ -32,9 +33,15 @@ export type DeployedGuestbookOnchainContract =
 
 export type DerivedGuestbookContractState = {
   readonly guestbooks: DerivedGuestbook[];
+  readonly messages: DerivedMessage[];
 };
 
 export type DerivedGuestbook = {
   id: string;
   guestbook: Guestbook;
+};
+
+export type DerivedMessage = {
+  id: string;
+  message: Message;
 };

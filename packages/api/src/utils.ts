@@ -1,7 +1,7 @@
 import { Logger } from "pino";
 import {parse as uuidParser} from "uuid"
-import { DerivedGuestbook } from "./common-types.js";
-import { Guestbook } from "@guestbook/guestbook-contract";
+import { DerivedGuestbook, DerivedMessage } from "./common-types.js";
+import { Guestbook, Message } from "@guestbook/guestbook-contract";
 
 // Checks if two Uint8Arrays equal each other
 export function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -125,4 +125,17 @@ export function createDerivedGuestbooksArray(guestbooks: {
   }));
 }
 
-export default {randomNonceBytes, uint8arraytostring, numberToUint8Array, createDerivedGuestbooksArray, pad };
+export function createDerivedMessagesArray(messages: {
+  isEmpty(): boolean;
+  size(): bigint;
+  member(key_0: Uint8Array): boolean;
+  lookup(key_0: Uint8Array): Message;
+  [Symbol.iterator](): Iterator<[Uint8Array, Message]>
+}): DerivedMessage[] {
+    return Array.from(messages).map(([key, message]) => ({
+      id: uint8arraytostring(key),
+      message: message,
+  }));
+}
+
+export default {randomNonceBytes, uint8arraytostring, numberToUint8Array, createDerivedGuestbooksArray, createDerivedMessagesArray, pad };

@@ -1,2 +1,2 @@
 export * from "./managed/guestbook/contract/index.cjs";
-export * from "./witnesses";
+export * from "./witnesses.js";

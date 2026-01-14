@@ -138,7 +138,31 @@ const displayDerivedLedgerState = async (
   currentState: DerivedGuestbookContractState,
   logger: Logger
 ): Promise<void> => {
-  console.log(`Guestbooks?:`, currentState.guestbooks);
+  console.log(`\n=== GUESTBOOKS ===`);
+  if (currentState.guestbooks.length === 0) {
+    console.log("No guestbooks found.");
+  } else {
+    currentState.guestbooks.forEach((gb) => {
+      console.log(`\nGuestbook ID: ${gb.id}`);
+      console.log(`  Title: ${gb.guestbook.title}`);
+      console.log(`  Owner: ${Buffer.from(gb.guestbook.owner).toString('hex').substring(0, 16)}...`);
+      console.log(`  Status: ${gb.guestbook.status === 0 ? 'Open' : 'Archived'}`);
+      console.log(`  Messages: ${gb.guestbook.messageAmount}`);
+      console.log(`  Created: ${new Date(Number(gb.guestbook.creationDate)).toISOString()}`);
+    });
+  }
+  
+  console.log(`\n=== MESSAGES ===`);
+  if (currentState.messages.length === 0) {
+    console.log("No messages found.");
+  } else {
+    console.log(`Total messages: ${currentState.messages.length}`);
+    currentState.messages.forEach((msg) => {
+      console.log(`\nMessage ID: ${msg.id}`);
+      console.log(`  Guestbook: ${Buffer.from(msg.message.guestbookId).toString('hex').substring(0, 16)}...`);
+      console.log(`  Content: ${msg.message.message}`);
+    });
+  }
 };
 
 const getUserPrivateState = async (
@@ -168,11 +192,12 @@ You can do one of the following:
   1. Display the current ledger state (known by everyone)
   2. Display the current derived ledger state (known by everyone)
   3. Display the current private state (known by you alone)
-  4. Display comprehensive wallet state (NEW)
+  4. Display comprehensive wallet state
   5. Create new guestbook
-  6. Archieve a guestbook
-  7. Update a guestbook
+  6. Archive a guestbook
+  7. Update a guestbook title
   8. Write a message on a guestbook
+  9. View messages for a guestbook
   12. Exit
 
 Which would you like to do? `;
@@ -251,9 +276,9 @@ const circuit_main_loop = async (
         }
 
         case "7": {
-          await GuestbookAPI.writeMessage(
+          await GuestbookAPI.updateGuestbook(
             await askNumber("Enter guestbook id to update:", rli), // ask for a number
-            await rli.question("Enter the new title for the guestbook")
+            await rli.question("Enter the new title for the guestbook:")
           );
 
           // Wait for wallet to sync after deposit
@@ -266,13 +291,36 @@ const circuit_main_loop = async (
         case "8": {
           await GuestbookAPI.writeMessage(
             await askNumber("Enter guestbook id on where to write the message:", rli), // ask for a number
-            await rli.question("Enter the message that you want to post")
+            await rli.question("Enter the message that you want to post:")
           );
 
           // Wait for wallet to sync after deposit
           logger.info("Waiting for wallet to sync after writing the message on a guestbook...");
           await waitForWalletSyncAfterOperation(wallet, logger);
           await displayComprehensiveWalletState(wallet, currentState, logger);
+          break;
+        }
+
+        case "9": {
+          const guestbookIdNum = await askNumber("Enter guestbook id to view messages:", rli);
+          const guestbookIdStr = guestbookIdNum.toString(); // Convert to string for API call
+          
+          try {
+            const messages = GuestbookAPI.getMessagesForGuestbook(guestbookIdStr);
+            
+            console.log(`\n=== MESSAGES FOR GUESTBOOK ${guestbookIdNum} ===`);
+            if (messages.length === 0) {
+              console.log("No messages found for this guestbook.");
+            } else {
+              messages.forEach((msg, index) => {
+                console.log(`\n${index + 1}. Message ID: ${msg.id}`);
+                console.log(`   Content: ${msg.message.message}`);
+              });
+              console.log(`\nTotal: ${messages.length} message(s)`);
+            }
+          } catch (error) {
+            logger.error(`Error fetching messages: ${error}`);
+          }
           break;
         }
 

@@ -8,10 +8,10 @@ import {
 import {
   Contract,
   ledger,
+  Ledger,
   GuestbookPrivateState,
   createGuestbookPrivateState,
   witnesses,
-  Ledger,
 } from "@guestbook/guestbook-contract";
 import { type Logger } from "pino";
 import * as utils from "./utils.js";
@@ -21,6 +21,7 @@ import {
   GuestbookPrivateStateId,
   DeployedGuestbookOnchainContract,
   DerivedGuestbookContractState,
+  DerivedMessage,
 } from "./common-types.js";
 
 const GuestbookContractInstance: GuestbookContract = new Contract(
@@ -49,6 +50,8 @@ export interface DeployedGuestbookAPI {
     id: number,
     message: string
   ) => Promise<FinalizedCallTxData<GuestbookContract, "writeMessage">>;
+
+  getMessagesForGuestbook: (guestbookId: string) => DerivedMessage[];
 }
 
 /**
@@ -99,6 +102,7 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
       (ledgerState, privateState) => {
         return {
           guestbooks: utils.createDerivedGuestbooksArray(ledgerState.guestbooks),
+          messages: utils.createDerivedMessagesArray(ledgerState.guestbooksMessages),
         };
       }
     );
@@ -262,6 +266,28 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
     });
 
     return txData;
+  }
+
+  getMessagesForGuestbook(guestbookIdStr: string): DerivedMessage[] {
+    this.logger?.debug(`Fetching messages for guestbook ${guestbookIdStr}...`);
+    
+    // Convert the guestbook ID string to Uint8Array for comparison
+    const guestbookIdBytes = utils.hexStringToUint8Array(guestbookIdStr);
+    
+    // Get current state (this is synchronous access to the latest state)
+    let currentMessages: DerivedMessage[] = [];
+    
+    // Subscribe briefly to get the current value
+    const subscription = this.state.subscribe((state) => {
+      currentMessages = state.messages.filter((derivedMsg) => {
+        const msgGuestbookId = derivedMsg.message.guestbookId;
+        return utils.arraysEqual(msgGuestbookId, guestbookIdBytes);
+      });
+    });
+    
+    subscription.unsubscribe();
+    
+    return currentMessages;
   }
 
   // Used to get the private state from the wallets privateState Provider
