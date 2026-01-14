@@ -15,7 +15,7 @@ export ledger messageCounter: Counter;
 export ledger guestbooks: Map<Bytes<32>, Guestbook>;
 export ledger guests: MerkleTree<100, Bytes<32>>;
 
-// map with guestbook id and message
+// map with message id as key
 export ledger guestbooksMessages: Map<Bytes<32>, Message>;
 
 struct Guest {
@@ -24,6 +24,7 @@ struct Guest {
 
 struct Message {
     id: Bytes<32>;
+    guestbookId: Bytes<32>;
     message: Opaque<"string">;
 }
 
@@ -32,7 +33,7 @@ struct Guestbook {
     title: Opaque<"string">;
     creationDate: Uint<128>;
     owner: Bytes<32>;
-    messageAmmount: Uint<128>;
+    messageAmount: Uint<128>;
     status: GuestbookStatus;
 }
 
@@ -127,14 +128,18 @@ export circuit writeMessage(
 
     const updateGuestbook = Guestbook{
         ...disclosedGuestbook,
-        messageAmmount: (disclosedGuestbook.messageAmmount + 1) as Uint<128>,
+        messageAmount: (disclosedGuestbook.messageAmount + 1) as Uint<128>,
     };
 
+    guestbooks.insert(disclosedGuestbookId, updateGuestbook);
+
+    const messageId = disclose(messageCounter as Field as Bytes<32>);
     const newMessage = Message{
-        id: disclose(messageCounter as Field as Bytes<32>),
+        id: messageId,
+        guestbookId: disclosedGuestbookId,
         message: disclose(guestMessage)
     };
     messageCounter.increment(1);    
 
-    guestbooksMessages.insert(disclosedGuestbookId, newMessage);
+    guestbooksMessages.insert(messageId, newMessage);
 }

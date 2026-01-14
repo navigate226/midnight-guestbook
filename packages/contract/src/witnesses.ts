@@ -19,15 +19,4 @@ export const witnesses = {
     GuestbookPrivateState,
     Uint8Array,
   ] => [privateState, privateState.secretKey],
-
-  // Generates proof that a user is part of the backers onchain
-  findGuest: (
-    context: WitnessContext<Ledger, GuestbookPrivateState>,
-    item: Uint8Array
-  ): [GuestbookPrivateState, MerkleTreePath<Uint8Array>] => {
-    return [
-      context.privateState,
-      context.ledger.guests.findPathForLeaf(item)!,
-    ];
-  }
 };
