@@ -253,7 +253,7 @@ const circuit_main_loop = async (
         }
         case "5": {
           await GuestbookAPI.createGuestbook(
-            await rli.question("Enter campaign title:")
+            await rli.question("Enter guestbook title:")
           );
 
           // Wait for wallet to sync after deposit
@@ -265,7 +265,7 @@ const circuit_main_loop = async (
 
         case "6": {
           await GuestbookAPI.archiveGuestbook(
-            await askNumber("Enter campaign id to archieve:", rli) // ask for a number
+            await rli.question("Enter guestbook id to archive:")
           );
 
           // Wait for wallet to sync after deposit
@@ -277,7 +277,7 @@ const circuit_main_loop = async (
 
         case "7": {
           await GuestbookAPI.updateGuestbook(
-            await askNumber("Enter guestbook id to update:", rli), // ask for a number
+            await rli.question("Enter guestbook id to update:"),
             await rli.question("Enter the new title for the guestbook:")
           );
 
@@ -290,7 +290,7 @@ const circuit_main_loop = async (
 
         case "8": {
           await GuestbookAPI.writeMessage(
-            await askNumber("Enter guestbook id on where to write the message:", rli), // ask for a number
+            await rli.question("Enter guestbook id on where to write the message:"),
             await rli.question("Enter the message that you want to post:")
           );
 
@@ -302,13 +302,12 @@ const circuit_main_loop = async (
         }
 
         case "9": {
-          const guestbookIdNum = await askNumber("Enter guestbook id to view messages:", rli);
-          const guestbookIdStr = guestbookIdNum.toString(); // Convert to string for API call
+          const guestbookIdStr = await rli.question("Enter guestbook id to view messages:");
           
           try {
             const messages = GuestbookAPI.getMessagesForGuestbook(guestbookIdStr);
             
-            console.log(`\n=== MESSAGES FOR GUESTBOOK ${guestbookIdNum} ===`);
+            console.log(`\n=== MESSAGES FOR GUESTBOOK ${guestbookIdStr} ===`);
             if (messages.length === 0) {
               console.log("No messages found for this guestbook.");
             } else {

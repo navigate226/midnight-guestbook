@@ -38,16 +38,16 @@ export interface DeployedGuestbookAPI {
   ) => Promise<FinalizedCallTxData<GuestbookContract, "createGuestbook">>;
 
   archiveGuestbook: (
-    id: number
+    id: string
   )  => Promise<FinalizedCallTxData<GuestbookContract, "archiveGuestbook">>;
 
   updateGuestbook: (
-    id: number,
+    id: string,
     title: string
   ) => Promise<FinalizedCallTxData<GuestbookContract, "updateGuestbook">>;
 
   writeMessage: (
-    id: number,
+    id: string,
     message: string
   ) => Promise<FinalizedCallTxData<GuestbookContract, "writeMessage">>;
 
@@ -204,11 +204,12 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   }
 
   async archiveGuestbook(
-    id: number
+    id: string
   ): Promise<FinalizedCallTxData<GuestbookContract, "archiveGuestbook">> {
     this.logger?.info(`Archiving guestbook with id ${id}...`);
 
-    const txData = await this.allReadyDeployedContract.callTx.archiveGuestbook(utils.numberToUint8Array(id));
+    const counterNum = utils.uuidStringToCounterNumber(id);
+    const txData = await this.allReadyDeployedContract.callTx.archiveGuestbook(utils.numberToUint8Array(counterNum));
 
     this.logger?.trace({
       transactionAdded: {
@@ -225,12 +226,13 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   }
 
   async updateGuestbook(
-    id: number,
+    id: string,
     title: string
   ): Promise<FinalizedCallTxData<GuestbookContract, "updateGuestbook">> {
     this.logger?.info(`Updating guestbook with id ${id}...`);
 
-    const txData = await this.allReadyDeployedContract.callTx.updateGuestbook(utils.numberToUint8Array(id), title);
+    const counterNum = utils.uuidStringToCounterNumber(id);
+    const txData = await this.allReadyDeployedContract.callTx.updateGuestbook(utils.numberToUint8Array(counterNum), title);
 
     this.logger?.trace({
       transactionAdded: {
@@ -247,12 +249,13 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   }
 
   async writeMessage(
-    id: number,
+    id: string,
     message: string
   ): Promise<FinalizedCallTxData<GuestbookContract, "writeMessage">> {
     this.logger?.info(`Writing message on guestbook with id ${id}...`);
 
-    const txData = await this.allReadyDeployedContract.callTx.writeMessage(utils.numberToUint8Array(id), message);
+    const counterNum = utils.uuidStringToCounterNumber(id);
+    const txData = await this.allReadyDeployedContract.callTx.writeMessage(utils.numberToUint8Array(counterNum), message);
 
     this.logger?.trace({
       transactionAdded: {
@@ -271,8 +274,10 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   getMessagesForGuestbook(guestbookIdStr: string): DerivedMessage[] {
     this.logger?.debug(`Fetching messages for guestbook ${guestbookIdStr}...`);
     
-    // Convert the guestbook ID string to Uint8Array for comparison
-    const guestbookIdBytes = utils.hexStringToUint8Array(guestbookIdStr);
+    // Convert the UUID string back to the counter number
+    // The guestbook ID is stored as a counter value in messages
+    const counterNum = utils.uuidStringToCounterNumber(guestbookIdStr);
+    const guestbookIdBytes = utils.numberToUint8Array(counterNum);
     
     // Get current state (this is synchronous access to the latest state)
     let currentMessages: DerivedMessage[] = [];

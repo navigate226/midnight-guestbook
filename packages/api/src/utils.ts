@@ -88,6 +88,9 @@ export function hexStringToUint8Array(hexStr: string): Uint8Array {
   return uuidToUint8Array(hexStr);
 }
 
+// Alias for backwards compatibility and clarity
+export const uuidStringToUint8Array = uuidToUint8Array;
+
 export function numberToUint8Array(num: number | bigint, length = 32): Uint8Array {
   const arr = new Uint8Array(length);
   let temp = BigInt(num);
@@ -99,6 +102,19 @@ export function numberToUint8Array(num: number | bigint, length = 32): Uint8Arra
   }
 
   return arr;
+}
+
+// Convert UUID (displayed format) back to counter number
+// The UUID format like "01000000-0000-0000-0000-000000000000" represents counter 1
+// This is the inverse of uint8arraytostring()
+export function uuidStringToCounterNumber(uuidStr: string): number {
+  // Remove hyphens to get the hex string
+  const hex = uuidStr.replace(/-/g, '');
+  // The counter is encoded in big-endian format at the start of the 32-byte array
+  // So we take the first 8 hex chars (4 bytes) to get the counter
+  const counterHex = hex.substring(0, 8);
+  const counterNum = parseInt(counterHex, 16);
+  return counterNum;
 }
 
 export function pad(s: string, n: number): Uint8Array {
