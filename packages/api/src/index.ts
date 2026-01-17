@@ -1,4 +1,4 @@
-import { combineLatest, concat, from, map, Observable, tap } from "rxjs";
+import { combineLatest, concat, from, map, Observable, tap, shareReplay } from "rxjs";
 import { ContractAddress } from "@midnight-ntwrk/compact-runtime";
 import {
   deployContract,
@@ -105,6 +105,8 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
           messages: utils.createDerivedMessagesArray(ledgerState.guestbooksMessages),
         };
       }
+    ).pipe(
+      shareReplay({ bufferSize: 1, refCount: true })
     );
   }
 
@@ -272,25 +274,40 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   }
 
   getMessagesForGuestbook(guestbookIdStr: string): DerivedMessage[] {
-    this.logger?.debug(`Fetching messages for guestbook ${guestbookIdStr}...`);
+    console.log(`[DEBUG] Fetching messages for guestbook ${guestbookIdStr}...`);
     
     // Convert the UUID string back to the counter number
     // The guestbook ID is stored as a counter value in messages
     const counterNum = utils.uuidStringToCounterNumber(guestbookIdStr);
     const guestbookIdBytes = utils.numberToUint8Array(counterNum);
     
-    // Get current state (this is synchronous access to the latest state)
-    let currentMessages: DerivedMessage[] = [];
+    console.log(`[DEBUG] Converted to counter: ${counterNum}`);
+    console.log(`[DEBUG] Target bytes (first 16): ${Array.from(guestbookIdBytes).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
     
-    // Subscribe briefly to get the current value
+    // Get current state - need to use a shared replay or BehaviorSubject pattern
+    // For now, access via a manual peek using the subscription's last emitted value
+    let currentState: DerivedGuestbookContractState | undefined;
     const subscription = this.state.subscribe((state) => {
-      currentMessages = state.messages.filter((derivedMsg) => {
-        const msgGuestbookId = derivedMsg.message.guestbookId;
-        return utils.arraysEqual(msgGuestbookId, guestbookIdBytes);
-      });
+      currentState = state;
     });
     
+    // Give subscription a tick to receive the value
     subscription.unsubscribe();
+    
+    if (!currentState) {
+      console.log(`[DEBUG] No state available yet`);
+      return [];
+    }
+    
+    console.log(`[DEBUG] Total messages in state: ${currentState.messages.length}`);
+    const currentMessages = currentState.messages.filter((derivedMsg) => {
+      const msgGuestbookId = derivedMsg.message.guestbookId;
+      console.log(`[DEBUG] Message ${derivedMsg.id} guestbookId (first 16): ${Array.from(msgGuestbookId).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
+      const matches = utils.arraysEqual(msgGuestbookId, guestbookIdBytes);
+      console.log(`[DEBUG] Match result: ${matches}`);
+      return matches;
+    });
+    console.log(`[DEBUG] Filtered messages count: ${currentMessages.length}`);
     
     return currentMessages;
   }

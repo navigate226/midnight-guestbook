@@ -3,6 +3,8 @@ import {parse as uuidParser} from "uuid"
 import { DerivedGuestbook, DerivedMessage } from "./common-types.js";
 import { Guestbook, Message } from "@guestbook/guestbook-contract";
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Checks if two Uint8Arrays equal each other
 export function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -79,8 +81,7 @@ export function uuidToUint8Array(uuidStr: string): Uint8Array {
 
 export function hexStringToUint8Array(hexStr: string): Uint8Array {
   // Validate UUID format first
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(hexStr)) {
+  if (!UUID_REGEX.test(hexStr)) {
     throw new Error(`Invalid UUID format: ${hexStr}`);
   }
   
@@ -95,8 +96,8 @@ export function numberToUint8Array(num: number | bigint, length = 32): Uint8Arra
   const arr = new Uint8Array(length);
   let temp = BigInt(num);
 
-  // Fill the array from the end (big-endian)
-  for (let i = length - 1; i >= 0; i--) {
+  // Fill the array from the start (little-endian to match Compact Field->Bytes conversion)
+  for (let i = 0; i < length; i++) {
     arr[i] = Number(temp & 0xffn);
     temp >>= 8n;
   }
@@ -108,12 +109,26 @@ export function numberToUint8Array(num: number | bigint, length = 32): Uint8Arra
 // The UUID format like "01000000-0000-0000-0000-000000000000" represents counter 1
 // This is the inverse of uint8arraytostring()
 export function uuidStringToCounterNumber(uuidStr: string): number {
+  if (!UUID_REGEX.test(uuidStr)) {
+    throw new Error(`Invalid guestbook id format: ${uuidStr}`);
+  }
   // Remove hyphens to get the hex string
   const hex = uuidStr.replace(/-/g, '');
-  // The counter is encoded in big-endian format at the start of the 32-byte array
-  // So we take the first 8 hex chars (4 bytes) to get the counter
+  // The counter is encoded in LITTLE-ENDIAN format at the start of the 32-byte array
+  // So we take the first 8 hex chars (4 bytes) and parse as little-endian
   const counterHex = hex.substring(0, 8);
-  const counterNum = parseInt(counterHex, 16);
+  
+  // Parse as little-endian: reverse byte pairs before parseInt
+  const byte0 = counterHex.substring(0, 2);
+  const byte1 = counterHex.substring(2, 4);
+  const byte2 = counterHex.substring(4, 6);
+  const byte3 = counterHex.substring(6, 8);
+  const littleEndianHex = byte3 + byte2 + byte1 + byte0;
+  
+  const counterNum = parseInt(littleEndianHex, 16);
+  if (Number.isNaN(counterNum)) {
+    throw new Error(`Guestbook id could not be converted to a counter: ${uuidStr}`);
+  }
   return counterNum;
 }
 

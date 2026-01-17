@@ -202,6 +202,21 @@ You can do one of the following:
 
 Which would you like to do? `;
 
+const GUESTBOOK_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EXIT_KEYWORDS = new Set(["exit", "quit", "q"]);
+
+const validateGuestbookIdInput = (id: string): string => {
+  const cleaned = id.trim();
+  if (!GUESTBOOK_ID_REGEX.test(cleaned)) {
+    throw new Error(
+      "Invalid guestbook id format. Expect UUID-like string e.g. 00000001-0000-0000-0000-000000000000."
+    );
+  }
+  return cleaned;
+};
+
+const isExitInput = (value: string): boolean => EXIT_KEYWORDS.has(value.trim().toLowerCase());
+
 async function askNumber(prompt: string, rli: Interface): Promise<number> {
   const answer = await rli.question(prompt);
   const num = parseInt(answer, 10);
@@ -227,9 +242,43 @@ const circuit_main_loop = async (
 
   const subscription = GuestbookAPI.state.subscribe(stateObserver);
 
+  const resolveCurrentState = async (): Promise<DerivedGuestbookContractState> => {
+    if (currentState) return currentState;
+    const snapshot = await Rx.firstValueFrom(GuestbookAPI.state);
+    currentState = snapshot;
+    return snapshot;
+  };
+
+  const validateExistingGuestbook = async (rawId: string): Promise<string> => {
+    const id = validateGuestbookIdInput(rawId);
+    const state = await resolveCurrentState();
+    const exists = state.guestbooks.some((gb) => gb.id === id);
+    if (!exists) {
+      throw new Error(`Guestbook ${id} does not exist. Refresh state and try again.`);
+    }
+    return id;
+  };
+
+  const promptExistingGuestbookId = async (question: string): Promise<string | null> => {
+    while (true) {
+      const raw = await rli.question(`${question} (type q to cancel):`);
+      if (isExitInput(raw)) return null;
+      try {
+        return await validateExistingGuestbook(raw);
+      } catch (error) {
+        logger.error((error as Error).message);
+      }
+    }
+  };
+
   try {
     while (true) {
-      const choice = await rli.question(CIRCUIT_MAIN_LOOP_QUESTION);
+      const choice = (await rli.question(CIRCUIT_MAIN_LOOP_QUESTION)).trim();
+      if (isExitInput(choice)) {
+        logger.info("Exiting.......");
+        return;
+      }
+
       switch (choice) {
         case "1": {
           await displayLedgerState(providers, GuestbookAPI.allReadyDeployedContract, logger);
@@ -264,11 +313,11 @@ const circuit_main_loop = async (
         }
 
         case "6": {
-          await GuestbookAPI.archiveGuestbook(
-            await rli.question("Enter guestbook id to archive:")
-          );
+          const id = await promptExistingGuestbookId("Enter guestbook id to archive:");
+          if (id === null) break;
 
-          // Wait for wallet to sync after deposit
+          await GuestbookAPI.archiveGuestbook(id);
+
           logger.info("Waiting for wallet to sync after archieving guestbook...");
           await waitForWalletSyncAfterOperation(wallet, logger);
           await displayComprehensiveWalletState(wallet, currentState, logger);
@@ -276,12 +325,12 @@ const circuit_main_loop = async (
         }
 
         case "7": {
-          await GuestbookAPI.updateGuestbook(
-            await rli.question("Enter guestbook id to update:"),
-            await rli.question("Enter the new title for the guestbook:")
-          );
+          const id = await promptExistingGuestbookId("Enter guestbook id to update:");
+          if (id === null) break;
+          const title = await rli.question("Enter the new title for the guestbook:");
 
-          // Wait for wallet to sync after deposit
+          await GuestbookAPI.updateGuestbook(id, title);
+
           logger.info("Waiting for wallet to sync after updating guestbook...");
           await waitForWalletSyncAfterOperation(wallet, logger);
           await displayComprehensiveWalletState(wallet, currentState, logger);
@@ -289,12 +338,12 @@ const circuit_main_loop = async (
         }
 
         case "8": {
-          await GuestbookAPI.writeMessage(
-            await rli.question("Enter guestbook id on where to write the message:"),
-            await rli.question("Enter the message that you want to post:")
-          );
+          const id = await promptExistingGuestbookId("Enter guestbook id on where to write the message:");
+          if (id === null) break;
+          const message = await rli.question("Enter the message that you want to post:");
 
-          // Wait for wallet to sync after deposit
+          await GuestbookAPI.writeMessage(id, message);
+
           logger.info("Waiting for wallet to sync after writing the message on a guestbook...");
           await waitForWalletSyncAfterOperation(wallet, logger);
           await displayComprehensiveWalletState(wallet, currentState, logger);
@@ -302,23 +351,20 @@ const circuit_main_loop = async (
         }
 
         case "9": {
-          const guestbookIdStr = await rli.question("Enter guestbook id to view messages:");
+          const id = await promptExistingGuestbookId("Enter guestbook id to view messages:");
+          if (id === null) break;
+
+          const messages = GuestbookAPI.getMessagesForGuestbook(id);
           
-          try {
-            const messages = GuestbookAPI.getMessagesForGuestbook(guestbookIdStr);
-            
-            console.log(`\n=== MESSAGES FOR GUESTBOOK ${guestbookIdStr} ===`);
-            if (messages.length === 0) {
-              console.log("No messages found for this guestbook.");
-            } else {
-              messages.forEach((msg, index) => {
-                console.log(`\n${index + 1}. Message ID: ${msg.id}`);
-                console.log(`   Content: ${msg.message.message}`);
-              });
-              console.log(`\nTotal: ${messages.length} message(s)`);
-            }
-          } catch (error) {
-            logger.error(`Error fetching messages: ${error}`);
+          console.log(`\n=== MESSAGES FOR GUESTBOOK ${id} ===`);
+          if (messages.length === 0) {
+            console.log("No messages found for this guestbook.");
+          } else {
+            messages.forEach((msg, index) => {
+              console.log(`\n${index + 1}. Message ID: ${msg.id}`);
+              console.log(`   Content: ${msg.message.message}`);
+            });
+            console.log(`\nTotal: ${messages.length} message(s)`);
           }
           break;
         }
