@@ -208,6 +208,7 @@ You can do one of the following:
   7. Update a guestbook title
   8. Write a message on a guestbook
   9. View messages for a guestbook (open or archived)
+  10. Edit a message in a guestbook
   12. Exit
 
 Which would you like to do? `;
@@ -404,6 +405,23 @@ const circuit_main_loop = async (
               console.log(`   Content: ${msg.message.message}`);
             });
             console.log(`\nTotal: ${messages.length} message(s)`);
+          }
+          break;
+        }
+
+        case "10": {
+          const messageId = await rli.question("Enter message id to edit (type q to cancel):");
+          if (isExitInput(messageId)) break;
+          
+          const newMessage = await rli.question("Enter the new message content:");
+          
+          try {
+            await GuestbookAPI.editMessage(messageId.trim(), newMessage);
+            logger.info("Waiting for wallet to sync after editing message...");
+            await waitForWalletSyncAfterOperation(wallet, logger);
+            await displayComprehensiveWalletState(wallet, currentState, logger);
+          } catch (error) {
+            logger.error(`Failed to edit message: ${(error as Error).message}`);
           }
           break;
         }

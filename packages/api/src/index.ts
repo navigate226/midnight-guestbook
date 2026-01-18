@@ -55,6 +55,11 @@ export interface DeployedGuestbookAPI {
     message: string
   ) => Promise<FinalizedCallTxData<GuestbookContract, "writeMessage">>;
 
+  editMessage: (
+    id: string,
+    message: string
+  ) => Promise<FinalizedCallTxData<GuestbookContract, "editMessage">>;
+
   getMessagesForGuestbook: (guestbookId: string) => DerivedMessage[];
 }
 
@@ -308,6 +313,29 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
     this.logger?.trace({
       transactionAdded: {
         circuit: "writeMessage",
+        txHash: txData.public.txHash,
+        blockDetails: {
+          blockHash: txData.public.blockHash,
+          blockHeight: txData.public.blockHeight,
+        },
+      },
+    });
+
+    return txData;
+  }
+
+  async editMessage(
+    id: string,
+    message: string
+  ): Promise<FinalizedCallTxData<GuestbookContract, "editMessage">> {
+    this.logger?.info(`Editing message with id ${id}...`);
+
+    const counterNum = utils.uuidStringToCounterNumber(id);
+    const txData = await this.allReadyDeployedContract.callTx.editMessage(utils.numberToUint8Array(counterNum), message);
+
+    this.logger?.trace({
+      transactionAdded: {
+        circuit: "editMessage",
         txHash: txData.public.txHash,
         blockDetails: {
           blockHash: txData.public.blockHash,

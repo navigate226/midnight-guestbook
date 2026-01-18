@@ -137,6 +137,31 @@ export circuit updateGuestbook(
     guestbooks.insert(disclosedGuestbookId, updateGuestbook);
 }
 
+export circuit editMessage(
+    messageId: Bytes<32>,
+    newMessage: Opaque<"string">
+): [] {
+    const disclosedMessageId = disclose(messageId);
+    assert (guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
+
+    const message = guestbooksMessages.lookup(disclosedMessageId);
+    const disclosedGuestbookId = message.guestbookId;
+    
+    // Check that the guestbook exists and is not archived
+    assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist or it has been archived");
+    
+    const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
+    assert (disclosedGuestbook.status != GuestbookStatus.Archived, "Can not edit message: guestbook has been archived");
+
+    // Update the message with new content
+    const updatedMessage = Message{
+        ...message,
+        message: disclose(newMessage)
+    };
+    
+    guestbooksMessages.insert(disclosedMessageId, updatedMessage);
+}
+
 export circuit writeMessage(
     guestbookId: Bytes<32>,
     guestMessage: Opaque<"string">
