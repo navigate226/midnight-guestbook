@@ -11,12 +11,15 @@ enum GuestbookStatus {
 
 export ledger guestbookCounter: Counter;
 export ledger messageCounter: Counter;
+export ledger archivedGuestbookCounter: Counter;
 
 export ledger guestbooks: Map<Bytes<32>, Guestbook>;
+export ledger archievedGuestbooks: Map<Bytes<32>, Guestbook>;
 export ledger guests: MerkleTree<100, Bytes<32>>;
 
 // map with message id as key
 export ledger guestbooksMessages: Map<Bytes<32>, Message>;
+export ledger archievedGuestbooksMessages: Map<Bytes<32>, Message>;
 
 struct Guest {
     id: Bytes<32>;
@@ -81,12 +84,38 @@ export circuit archiveGuestbook(
 
     const disclosedGuestbookId = disclose(guestbookId);
     assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist"); // check for guestbook existence
+    assert (!archievedGuestbooks.member(disclosedGuestbookId), "Guestbook is already archived"); // check if already archived
     
     const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
     const ownerHash = generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
-    assert (ownerHash == disclosedGuestbook.owner, "Can not archieve this guestbook, you are not the owner");
+    assert (ownerHash == disclosedGuestbook.owner, "Can not archive this guestbook, you are not the owner");
 
+    // Update guestbook status and move to archived ledger
+    const archivedGuestbook = Guestbook{
+        ...disclosedGuestbook,
+        status: GuestbookStatus.Archived
+    };
+    
+    archievedGuestbooks.insert(disclosedGuestbookId, archivedGuestbook);
     guestbooks.remove(disclosedGuestbookId);
+    archivedGuestbookCounter.increment(1);
+}
+
+export circuit archiveMessage(
+    messageId: Bytes<32>
+): [] {
+    const disclosedMessageId = disclose(messageId);
+    assert (guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
+    assert (!archievedGuestbooksMessages.member(disclosedMessageId), "Message is already archived");
+
+    const message = guestbooksMessages.lookup(disclosedMessageId);
+    
+    // Verify the guestbook is archived
+    assert (archievedGuestbooks.member(message.guestbookId), "Cannot archive message: guestbook is not archived");
+
+    // Move message to archived ledger
+    archievedGuestbooksMessages.insert(disclosedMessageId, message);
+    guestbooksMessages.remove(disclosedMessageId);
 }
 
 export circuit updateGuestbook(

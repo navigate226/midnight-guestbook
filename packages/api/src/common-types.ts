@@ -33,7 +33,12 @@ export type DeployedGuestbookOnchainContract =
 
 export type DerivedGuestbookContractState = {
   readonly guestbooks: DerivedGuestbook[];
+  readonly archivedGuestbooks: DerivedGuestbook[];
   readonly messages: DerivedMessage[];
+  readonly archivedMessages: DerivedMessage[];
+  readonly guestbookCounter: bigint;
+  readonly messageCounter: bigint;
+  readonly archivedGuestbookCounter: bigint;
 };
 
 export type DerivedGuestbook = {

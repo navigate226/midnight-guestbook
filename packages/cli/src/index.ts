@@ -127,10 +127,13 @@ const displayLedgerState = async (
     );
   } else {
     logger.info(`guestbookCounter: ${ledgerState.guestbookCounter}`);
+    logger.info(`archivedGuestbookCounter: ${ledgerState.archivedGuestbookCounter}`);
     logger.info(`messageCounter: ${ledgerState.messageCounter}`);
     logger.info(`guestbooks: ${ledgerState.guestbooks}`);
+    logger.info(`archievedGuestbooks: ${ledgerState.archievedGuestbooks}`);
     logger.info(`guests: ${ledgerState.guests}`);
     logger.info(`guestbooksMessages: ${ledgerState.guestbooksMessages}`);
+    logger.info(`archievedGuestbooksMessages: ${ledgerState.archievedGuestbooksMessages}`);
   }
 };
 
@@ -138,29 +141,36 @@ const displayDerivedLedgerState = async (
   currentState: DerivedGuestbookContractState,
   logger: Logger
 ): Promise<void> => {
-  console.log(`\n=== GUESTBOOKS ===`);
+  console.log(`\n=== COUNTERS ===`);
+  console.log(`Open guestbooks: ${currentState.guestbooks.length} (counter ${currentState.guestbookCounter})`);
+  console.log(`Archived guestbooks: ${currentState.archivedGuestbooks.length} (counter ${currentState.archivedGuestbookCounter})`);
+  console.log(`Messages: ${currentState.messages.length + currentState.archivedMessages.length} (counter ${currentState.messageCounter})`);
+
+  console.log(`\n=== OPEN GUESTBOOKS ===`);
   if (currentState.guestbooks.length === 0) {
-    console.log("No guestbooks found.");
+    console.log("No open guestbooks found.");
   } else {
     currentState.guestbooks.forEach((gb) => {
       console.log(`\nGuestbook ID: ${gb.id}`);
       console.log(`  Title: ${gb.guestbook.title}`);
       console.log(`  Owner: ${Buffer.from(gb.guestbook.owner).toString('hex').substring(0, 16)}...`);
-      console.log(`  Status: ${gb.guestbook.status === 0 ? 'Open' : 'Archived'}`);
+      console.log(`  Status: Open`);
       console.log(`  Messages: ${gb.guestbook.messageAmount}`);
       console.log(`  Created: ${new Date(Number(gb.guestbook.creationDate)).toISOString()}`);
     });
   }
-  
-  console.log(`\n=== MESSAGES ===`);
-  if (currentState.messages.length === 0) {
-    console.log("No messages found.");
+
+  console.log(`\n=== ARCHIVED GUESTBOOKS ===`);
+  if (currentState.archivedGuestbooks.length === 0) {
+    console.log("No archived guestbooks found.");
   } else {
-    console.log(`Total messages: ${currentState.messages.length}`);
-    currentState.messages.forEach((msg) => {
-      console.log(`\nMessage ID: ${msg.id}`);
-      console.log(`  Guestbook: ${Buffer.from(msg.message.guestbookId).toString('hex').substring(0, 16)}...`);
-      console.log(`  Content: ${msg.message.message}`);
+    currentState.archivedGuestbooks.forEach((gb) => {
+      console.log(`\nGuestbook ID: ${gb.id}`);
+      console.log(`  Title: ${gb.guestbook.title}`);
+      console.log(`  Owner: ${Buffer.from(gb.guestbook.owner).toString('hex').substring(0, 16)}...`);
+      console.log(`  Status: Archived`);
+      console.log(`  Messages: ${gb.guestbook.messageAmount}`);
+      console.log(`  Created: ${new Date(Number(gb.guestbook.creationDate)).toISOString()}`);
     });
   }
 };
@@ -190,14 +200,14 @@ const displayUserPrivateState = async (
 const CIRCUIT_MAIN_LOOP_QUESTION = `
 You can do one of the following:
   1. Display the current ledger state (known by everyone)
-  2. Display the current derived ledger state (known by everyone)
+  2. Display the current derived ledger state (open + archived)
   3. Display the current private state (known by you alone)
   4. Display comprehensive wallet state
   5. Create new guestbook
   6. Archive a guestbook
   7. Update a guestbook title
   8. Write a message on a guestbook
-  9. View messages for a guestbook
+  9. View messages for a guestbook (open or archived)
   12. Exit
 
 Which would you like to do? `;
@@ -252,9 +262,26 @@ const circuit_main_loop = async (
   const validateExistingGuestbook = async (rawId: string): Promise<string> => {
     const id = validateGuestbookIdInput(rawId);
     const state = await resolveCurrentState();
-    const exists = state.guestbooks.some((gb) => gb.id === id);
+    const isOpen = state.guestbooks.some((gb) => gb.id === id);
+    const isArchived = state.archivedGuestbooks.some((gb) => gb.id === id);
+
+    if (isArchived) {
+      throw new Error(`Guestbook ${id} is archived. You cannot write or update it.`);
+    }
+    if (!isOpen) {
+      throw new Error(`Guestbook ${id} does not exist or is not open. Refresh state and try again.`);
+    }
+    return id;
+  };
+
+  const validateAnyGuestbook = async (rawId: string): Promise<string> => {
+    const id = validateGuestbookIdInput(rawId);
+    const state = await resolveCurrentState();
+    const exists =
+      state.guestbooks.some((gb) => gb.id === id) ||
+      state.archivedGuestbooks.some((gb) => gb.id === id);
     if (!exists) {
-      throw new Error(`Guestbook ${id} does not exist. Refresh state and try again.`);
+      throw new Error(`Guestbook ${id} does not exist (open or archived). Refresh state and try again.`);
     }
     return id;
   };
@@ -265,6 +292,18 @@ const circuit_main_loop = async (
       if (isExitInput(raw)) return null;
       try {
         return await validateExistingGuestbook(raw);
+      } catch (error) {
+        logger.error((error as Error).message);
+      }
+    }
+  };
+
+  const promptAnyGuestbookId = async (question: string): Promise<string | null> => {
+    while (true) {
+      const raw = await rli.question(`${question} (type q to cancel):`);
+      if (isExitInput(raw)) return null;
+      try {
+        return await validateAnyGuestbook(raw);
       } catch (error) {
         logger.error((error as Error).message);
       }
@@ -351,7 +390,7 @@ const circuit_main_loop = async (
         }
 
         case "9": {
-          const id = await promptExistingGuestbookId("Enter guestbook id to view messages:");
+          const id = await promptAnyGuestbookId("Enter guestbook id to view messages (open or archived):");
           if (id === null) break;
 
           const messages = GuestbookAPI.getMessagesForGuestbook(id);

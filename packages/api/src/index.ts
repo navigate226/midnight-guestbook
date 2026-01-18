@@ -41,6 +41,10 @@ export interface DeployedGuestbookAPI {
     id: string
   )  => Promise<FinalizedCallTxData<GuestbookContract, "archiveGuestbook">>;
 
+  archiveMessage: (
+    id: string
+  ) => Promise<FinalizedCallTxData<GuestbookContract, "archiveMessage">>;
+
   updateGuestbook: (
     id: string,
     title: string
@@ -102,7 +106,12 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
       (ledgerState, privateState) => {
         return {
           guestbooks: utils.createDerivedGuestbooksArray(ledgerState.guestbooks),
+          archivedGuestbooks: utils.createDerivedGuestbooksArray(ledgerState.archievedGuestbooks),
           messages: utils.createDerivedMessagesArray(ledgerState.guestbooksMessages),
+          archivedMessages: utils.createDerivedMessagesArray(ledgerState.archievedGuestbooksMessages),
+          guestbookCounter: ledgerState.guestbookCounter,
+          messageCounter: ledgerState.messageCounter,
+          archivedGuestbookCounter: ledgerState.archivedGuestbookCounter,
         };
       }
     ).pipe(
@@ -210,16 +219,53 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   ): Promise<FinalizedCallTxData<GuestbookContract, "archiveGuestbook">> {
     this.logger?.info(`Archiving guestbook with id ${id}...`);
 
+    // Get all messages for this guestbook before archiving
+    const messages = this.getMessagesForGuestbook(id);
+    this.logger?.info(`Found ${messages.length} messages to archive`);
+
     const counterNum = utils.uuidStringToCounterNumber(id);
-    const txData = await this.allReadyDeployedContract.callTx.archiveGuestbook(utils.numberToUint8Array(counterNum));
+    const guestbookIdBytes = utils.numberToUint8Array(counterNum);
+    
+    // First, archive the guestbook
+    const txData = await this.allReadyDeployedContract.callTx.archiveGuestbook(guestbookIdBytes);
+
+    // Then archive all messages belonging to this guestbook
+    for (const message of messages) {
+      this.logger?.info(`Archiving message ${message.id}...`);
+      await this.archiveMessage(message.id);
+    }
 
     this.logger?.trace({
       transactionAdded: {
-        circuit: "endCampaign",
+        circuit: "archiveGuestbook",
         txHash: txData.public.txHash,
         blockDetails: {
           blockHash: txData.public.blockHash,
           blockHeight: txData.public.blockHeight,
+        },
+      },
+    });
+
+    return txData;
+  }
+
+  async archiveMessage(
+    id: string
+  ): Promise<FinalizedCallTxData<GuestbookContract, "archiveMessage">> {
+    this.logger?.info(`Archiving message with id ${id}...`);
+
+    const counterNum = utils.uuidStringToCounterNumber(id);
+    const messageIdBytes = utils.numberToUint8Array(counterNum);
+    
+    const txData = await this.allReadyDeployedContract.callTx.archiveMessage(messageIdBytes);
+
+    this.logger?.trace({
+      transactionAdded: {
+        circuit: "archiveMessage",
+        txHash: txData.public.txHash,
+        blockDetails: {
+          blockHeight: txData.public.blockHeight,
+          blockHash: txData.public.blockHash,
         },
       },
     });
@@ -276,37 +322,30 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
   getMessagesForGuestbook(guestbookIdStr: string): DerivedMessage[] {
     console.log(`[DEBUG] Fetching messages for guestbook ${guestbookIdStr}...`);
     
-    // Convert the UUID string back to the counter number
-    // The guestbook ID is stored as a counter value in messages
     const counterNum = utils.uuidStringToCounterNumber(guestbookIdStr);
     const guestbookIdBytes = utils.numberToUint8Array(counterNum);
     
-    console.log(`[DEBUG] Converted to counter: ${counterNum}`);
-    console.log(`[DEBUG] Target bytes (first 16): ${Array.from(guestbookIdBytes).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-    
-    // Get current state - need to use a shared replay or BehaviorSubject pattern
-    // For now, access via a manual peek using the subscription's last emitted value
     let currentState: DerivedGuestbookContractState | undefined;
     const subscription = this.state.subscribe((state) => {
       currentState = state;
     });
-    
-    // Give subscription a tick to receive the value
     subscription.unsubscribe();
     
     if (!currentState) {
       console.log(`[DEBUG] No state available yet`);
       return [];
     }
-    
-    console.log(`[DEBUG] Total messages in state: ${currentState.messages.length}`);
-    const currentMessages = currentState.messages.filter((derivedMsg) => {
+
+    const allMessages = [
+      ...currentState.messages,
+      ...currentState.archivedMessages,
+    ];
+
+    const currentMessages = allMessages.filter((derivedMsg) => {
       const msgGuestbookId = derivedMsg.message.guestbookId;
-      console.log(`[DEBUG] Message ${derivedMsg.id} guestbookId (first 16): ${Array.from(msgGuestbookId).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join(' ')}`);
-      const matches = utils.arraysEqual(msgGuestbookId, guestbookIdBytes);
-      console.log(`[DEBUG] Match result: ${matches}`);
-      return matches;
+      return utils.arraysEqual(msgGuestbookId, guestbookIdBytes);
     });
+    
     console.log(`[DEBUG] Filtered messages count: ${currentMessages.length}`);
     
     return currentMessages;
