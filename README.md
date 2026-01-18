@@ -8,7 +8,7 @@ This is a basic smart contract that allows users to:
 - **Create guestbooks** with custom titles
 - **Write messages** to existing guestbooks
 - **Archive guestbooks** (making them read-only)
-- **View guestbooks and their messages** privately
+- **View guestbooks and their messages**
 
 All interactions are powered by zero-knowledge proofs, ensuring privacy through the Midnight blockchain.
 
