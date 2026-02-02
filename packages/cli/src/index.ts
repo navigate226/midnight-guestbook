@@ -413,15 +413,26 @@ const circuit_main_loop = async (
           const messageId = await rli.question("Enter message id to edit (type q to cancel):");
           if (isExitInput(messageId)) break;
           
+          // Check if the user can edit this message
+          const canEdit = await GuestbookAPI.canEditMessage(messageId.trim());
+          if (!canEdit) {
+            logger.error("❌ You cannot edit this message. Only the original author can edit their messages.");
+            break;
+          }
+          
           const newMessage = await rli.question("Enter the new message content:");
           
           try {
             await GuestbookAPI.editMessage(messageId.trim(), newMessage);
+            logger.info("✅ Message edited successfully!");
             logger.info("Waiting for wallet to sync after editing message...");
             await waitForWalletSyncAfterOperation(wallet, logger);
             await displayComprehensiveWalletState(wallet, currentState, logger);
           } catch (error) {
-            logger.error(`Failed to edit message: ${(error as Error).message}`);
+            logger.error(`❌ Failed to edit message: ${(error as Error).message}`);
+            if ((error as Error).message.includes("assertion")) {
+              logger.error("This usually means you are not the author of this message.");
+            }
           }
           break;
         }

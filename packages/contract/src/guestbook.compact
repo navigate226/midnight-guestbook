@@ -28,6 +28,7 @@ struct Guest {
 struct Message {
     id: Bytes<32>;
     guestbookId: Bytes<32>;
+    author: Bytes<32>;
     message: Opaque<"string">;
 }
 
@@ -153,6 +154,12 @@ export circuit editMessage(
     const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
     assert (disclosedGuestbook.status != GuestbookStatus.Archived, "Can not edit message: guestbook has been archived");
 
+    const guest = Guest{
+        id: disclose(localSecretKey())
+    };
+    const guestCommit = generateCommit(guest, disclosedGuestbookId);
+    assert (guestCommit == message.author, "Can not edit message: you are not the author");
+
     // Update the message with new content
     const updatedMessage = Message{
         ...message,
@@ -191,6 +198,7 @@ export circuit writeMessage(
     const newMessage = Message{
         id: messageId,
         guestbookId: disclosedGuestbookId,
+        author: guestCommit,
         message: disclose(guestMessage)
     };
     messageCounter.increment(1);    

@@ -7,6 +7,7 @@ A simple privacy-preserving guestbook smart contract built on the Midnight block
 This is a basic smart contract that allows users to:
 - **Create guestbooks** with custom titles
 - **Write messages** to existing guestbooks
+- **Edit their own messages** (author verification via ZK proofs)
 - **Archive guestbooks** (making them read-only)
 - **View guestbooks and their messages**
 

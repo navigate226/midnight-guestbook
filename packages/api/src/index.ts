@@ -60,6 +60,8 @@ export interface DeployedGuestbookAPI {
     message: string
   ) => Promise<FinalizedCallTxData<GuestbookContract, "editMessage">>;
 
+  canEditMessage: (messageId: string) => Promise<boolean>;
+
   getMessagesForGuestbook: (guestbookId: string) => DerivedMessage[];
 }
 
@@ -78,7 +80,7 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
    * @param logger becomes accessible s if they were decleared as static properties as part of the class
    */
   private constructor(
-    providers: GuestbookContractProviders,
+    private readonly providers: GuestbookContractProviders,
     public readonly allReadyDeployedContract: DeployedGuestbookOnchainContract,
     private logger?: Logger
   ) {
@@ -324,6 +326,18 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
     return txData;
   }
 
+  /**
+   * Edit an existing message.
+   * 
+   * IMPORTANT: Only the original author of the message can edit it.
+   * The contract will verify that the caller is the author using their local secret key.
+   * If a non-author attempts to edit a message, the transaction will fail with an assertion error.
+   * 
+   * @param id - The message ID (as a UUID string)
+   * @param message - The new message content
+   * @returns Promise resolving to the finalized transaction data
+   * @throws Error if the caller is not the message author or if the message doesn't exist
+   */
   async editMessage(
     id: string,
     message: string
@@ -345,6 +359,81 @@ export class GuestbookAPI implements DeployedGuestbookAPI {
     });
 
     return txData;
+  }
+
+  /**
+   * Check if the current user can edit a specific message.
+   * 
+   * This method verifies if the message author matches the current user's identity
+   * by comparing guest commits. This is useful for UI/UX to show/hide edit buttons.
+   * 
+   * Note: This is a best-effort check for UX purposes. The actual authorization
+   * is enforced by the smart contract. If this check passes but the transaction fails,
+   * it means the user is not the author.
+   * 
+   * @param messageIdStr - The message ID (as a UUID string)
+   * @returns Promise<boolean> - true if the current user might be the message author
+   */
+  async canEditMessage(messageIdStr: string): Promise<boolean> {
+    try {
+      const counterNum = utils.uuidStringToCounterNumber(messageIdStr);
+      const messageIdBytes = utils.numberToUint8Array(counterNum);
+      
+      let currentState: DerivedGuestbookContractState | undefined;
+      const subscription = this.state.subscribe((state) => {
+        currentState = state;
+      });
+      subscription.unsubscribe();
+      
+      if (!currentState) {
+        return false;
+      }
+
+      // Find the message
+      const allMessages = [
+        ...currentState.messages,
+        ...currentState.archivedMessages,
+      ];
+
+      const targetMessage = allMessages.find((derivedMsg) => {
+        return utils.arraysEqual(derivedMsg.message.id, messageIdBytes);
+      });
+
+      if (!targetMessage) {
+        return false;
+      }
+
+      // Get the current user's private state to access their secret key
+      const privateState = await this.providers.privateStateProvider.get(
+        GuestbookPrivateStateId
+      );
+      
+      if (!privateState) {
+        return false;
+      }
+
+      // Generate the guest commit for the current user with the guestbook ID
+      const guestbookIdBytes = targetMessage.message.guestbookId;
+      
+      try {
+        const currentUserCommit = utils.generateGuestCommit(
+          privateState.secretKey,
+          guestbookIdBytes
+        );
+
+        // Compare with the message author
+        return utils.arraysEqual(currentUserCommit, targetMessage.message.author);
+      } catch (error) {
+        // If guest commit generation fails, we can't verify but allow the attempt
+        // The contract will enforce the actual check
+        this.logger?.warn(`Could not generate guest commit for comparison: ${error}`);
+        return true; // Optimistically allow - contract will enforce
+      }
+    } catch (error) {
+      this.logger?.error(`Error checking edit permission: ${error}`);
+      // Return true to allow the attempt - contract will enforce the actual check
+      return true;
+    }
   }
 
   getMessagesForGuestbook(guestbookIdStr: string): DerivedMessage[] {

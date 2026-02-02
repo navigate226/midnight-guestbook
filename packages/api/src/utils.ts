@@ -2,6 +2,7 @@ import { Logger } from "pino";
 import {parse as uuidParser} from "uuid"
 import { DerivedGuestbook, DerivedMessage } from "./common-types.js";
 import { Guestbook, Message } from "@guestbook/guestbook-contract";
+import { persistentCommit, CompactTypeBytes } from "@midnight-ntwrk/compact-runtime";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -169,4 +170,24 @@ export function createDerivedMessagesArray(messages: {
   }));
 }
 
-export default {randomNonceBytes, uint8arraytostring, numberToUint8Array, createDerivedGuestbooksArray, createDerivedMessagesArray, pad };
+/**
+ * Generate a guest commit hash that matches the Compact contract's generateCommit circuit.
+ * This replicates the logic: persistentCommit<Guest>({id: secretKey}, rand)
+ * 
+ * This uses a simplified implementation that should match the contract's behavior.
+ * The Guest struct is { id: Bytes<32> }, which when serialized is just the 32 bytes of the id.
+ * 
+ * @param secretKey - The user's secret key (32 bytes)
+ * @param guestbookId - The guestbook ID used as randomness (32 bytes)
+ * @returns The guest commit hash (32 bytes)
+ */
+export function generateGuestCommit(secretKey: Uint8Array, guestbookId: Uint8Array): Uint8Array {
+  // Create a simple type descriptor for Bytes<32>
+  const bytesType = new CompactTypeBytes(32);
+  
+  // For a struct with a single Bytes<32> field, the serialization is just the bytes themselves
+  // So we use the secretKey directly as the value to commit
+  return persistentCommit(bytesType, secretKey, guestbookId);
+}
+
+export default {randomNonceBytes, uint8arraytostring, numberToUint8Array, createDerivedGuestbooksArray, createDerivedMessagesArray, pad, generateGuestCommit };
