@@ -2,206 +2,196 @@ pragma language_version >= 0.18.0;
 
 import CompactStandardLibrary;
 
-export {Guestbook, GuestbookStatus, Message};
+export { Guestbook, GuestbookStatus, Message };
 
 enum GuestbookStatus {
-    Open,
-    Archived
+  Open,
+  Archived
 }
 
 export ledger guestbookCounter: Counter;
+
 export ledger messageCounter: Counter;
+
 export ledger archivedGuestbookCounter: Counter;
 
 export ledger guestbooks: Map<Bytes<32>, Guestbook>;
+
 export ledger archievedGuestbooks: Map<Bytes<32>, Guestbook>;
-export ledger guests: MerkleTree<100, Bytes<32>>;
+
+export ledger guests: MerkleTree<32, Bytes<32>>;
 
 // map with message id as key
 export ledger guestbooksMessages: Map<Bytes<32>, Message>;
+
 export ledger archievedGuestbooksMessages: Map<Bytes<32>, Message>;
 
 struct Guest {
-    id: Bytes<32>;
+  id: Bytes<32>;
 }
 
 struct Message {
-    id: Bytes<32>;
-    guestbookId: Bytes<32>;
-    author: Bytes<32>;
-    message: Opaque<"string">;
+  id: Bytes<32>;
+  guestbookId: Bytes<32>;
+  author: Bytes<32>;
+  message: Opaque<"string">;
 }
 
 struct Guestbook {
-    id: Bytes<32>;
-    title: Opaque<"string">;
-    creationDate: Uint<128>;
-    owner: Bytes<32>;
-    messageAmount: Uint<128>;
-    status: GuestbookStatus;
+  id: Bytes<32>;
+  title: Opaque<"string">;
+  creationDate: Uint<128>;
+  owner: Bytes<32>;
+  messageAmount: Uint<128>;
+  status: GuestbookStatus;
 }
 
 witness localSecretKey(): Bytes<32>;
 
-circuit generateOwnersPK(address: Bytes<32>, sk: Bytes<32>, rand: Bytes<32>): Bytes<32>{
-    return persistentHash<Vector<2, Bytes<32>>>([
-        pad(32, "guestbook:user"),
-        persistentHash<Vector<3, Bytes<32>>>([
-        address, sk, rand, 
-        ])
-    ]);
+circuit generateOwnersPK(address: Bytes<32>, sk: Bytes<32>, rand: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>(
+           [pad(32, "guestbook:user"), persistentHash<Vector<3, Bytes<32>>>([address, sk, rand,])]
+           );
 }
 
-circuit generateCommit(data: Guest, rand: Bytes<32>): Bytes<32>{
-    return persistentCommit<Guest>(data, rand);
+circuit generateCommit(data: Guest, rand: Bytes<32>): Bytes<32> {
+  return persistentCommit<Guest>(data, rand);
 }
 
 export circuit createGuestbook(
-    guestbookTitle: Opaque<"string">,
-    guestbookCreationDate: Uint<128>
-): [] {
-    
-    const disclosedGuestbookId = disclose(guestbookCounter as Field as Bytes<32>);
-    assert (!guestbooks.member(disclosedGuestbookId), "Guestbook with this ID already exists"); // check for guestbook uniqueness
+                 guestbookTitle: Opaque<"string">,
+                 guestbookCreationDate: Uint<128>
+                 ): [] {
 
-    const ownersHash = generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
+  const disclosedGuestbookId = disclose(guestbookCounter as Field as Bytes<32>);
+  assert(!guestbooks.member(disclosedGuestbookId), "Guestbook with this ID already exists"); // check for guestbook uniqueness
 
-    const newGuestbook = Guestbook {
-        ...default<Guestbook>,
-        id: disclose(disclosedGuestbookId),
-        title: disclose(guestbookTitle),
-        status: GuestbookStatus.Open,
-        creationDate: disclose(guestbookCreationDate),
-        owner: ownersHash
-    };
-    guestbookCounter.increment(1);
+  const ownersHash =
+          generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
 
-    guestbooks.insert(disclosedGuestbookId, newGuestbook);
+  const newGuestbook =
+          Guestbook { ...default<Guestbook>,
+                      id: disclose(disclosedGuestbookId),
+                      title: disclose(guestbookTitle),
+                      status: GuestbookStatus.Open,
+                      creationDate: disclose(guestbookCreationDate),
+                      owner: ownersHash };
+  guestbookCounter.increment(1);
+
+  guestbooks.insert(disclosedGuestbookId, newGuestbook);
 }
 
-export circuit archiveGuestbook(
-    guestbookId: Bytes<32>
-): [] {
+export circuit archiveGuestbook(guestbookId: Bytes<32>): [] {
 
-    const disclosedGuestbookId = disclose(guestbookId);
-    assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist"); // check for guestbook existence
-    assert (!archievedGuestbooks.member(disclosedGuestbookId), "Guestbook is already archived"); // check if already archived
-    
-    const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
-    const ownerHash = generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
-    assert (ownerHash == disclosedGuestbook.owner, "Can not archive this guestbook, you are not the owner");
+  const disclosedGuestbookId = disclose(guestbookId);
+  assert(guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist"); // check for guestbook existence
+  assert(!archievedGuestbooks.member(disclosedGuestbookId), "Guestbook is already archived"); // check if already archived
 
-    // Update guestbook status and move to archived ledger
-    const archivedGuestbook = Guestbook{
-        ...disclosedGuestbook,
-        status: GuestbookStatus.Archived
-    };
-    
-    archievedGuestbooks.insert(disclosedGuestbookId, archivedGuestbook);
-    guestbooks.remove(disclosedGuestbookId);
-    archivedGuestbookCounter.increment(1);
+  const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
+  const ownerHash =
+          generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
+  assert(ownerHash == disclosedGuestbook.owner,
+         "Can not archive this guestbook, you are not the owner"
+         );
+
+  // Update guestbook status and move to archived ledger
+  const archivedGuestbook = Guestbook { ...disclosedGuestbook, status: GuestbookStatus.Archived };
+
+  archievedGuestbooks.insert(disclosedGuestbookId, archivedGuestbook);
+  guestbooks.remove(disclosedGuestbookId);
+  archivedGuestbookCounter.increment(1);
 }
 
-export circuit archiveMessage(
-    messageId: Bytes<32>
-): [] {
-    const disclosedMessageId = disclose(messageId);
-    assert (guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
-    assert (!archievedGuestbooksMessages.member(disclosedMessageId), "Message is already archived");
+export circuit archiveMessage(messageId: Bytes<32>): [] {
+  const disclosedMessageId = disclose(messageId);
+  assert(guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
+  assert(!archievedGuestbooksMessages.member(disclosedMessageId), "Message is already archived");
 
-    const message = guestbooksMessages.lookup(disclosedMessageId);
-    
-    // Verify the guestbook is archived
-    assert (archievedGuestbooks.member(message.guestbookId), "Cannot archive message: guestbook is not archived");
+  const message = guestbooksMessages.lookup(disclosedMessageId);
 
-    // Move message to archived ledger
-    archievedGuestbooksMessages.insert(disclosedMessageId, message);
-    guestbooksMessages.remove(disclosedMessageId);
+  // Verify the guestbook is archived
+  assert(archievedGuestbooks.member(message.guestbookId),
+         "Cannot archive message: guestbook is not archived"
+         );
+
+  // Move message to archived ledger
+  archievedGuestbooksMessages.insert(disclosedMessageId, message);
+  guestbooksMessages.remove(disclosedMessageId);
 }
 
-export circuit updateGuestbook(
-    guestbookId: Bytes<32>,
-    newTitle: Opaque<"string">
-): [] {
-    const disclosedGuestbookId = disclose(guestbookId);
-    assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist"); // check for guestbook existence
-    
-    const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
-    const ownerHash = generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
-    assert (ownerHash == disclosedGuestbook.owner, "Can not change the title of this guestbook, you are not the owner");
+export circuit updateGuestbook(guestbookId: Bytes<32>, newTitle: Opaque<"string">): [] {
+  const disclosedGuestbookId = disclose(guestbookId);
+  assert(guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist"); // check for guestbook existence
 
-    const updateGuestbook = Guestbook{   
-        ...disclosedGuestbook,
-        title: disclose(newTitle)
-    };
-    
-    guestbooks.insert(disclosedGuestbookId, updateGuestbook);
+  const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
+  const ownerHash =
+          generateOwnersPK(ownPublicKey().bytes, disclose(localSecretKey()), disclosedGuestbookId);
+  assert(ownerHash == disclosedGuestbook.owner,
+         "Can not change the title of this guestbook, you are not the owner"
+         );
+
+  const updateGuestbook = Guestbook { ...disclosedGuestbook, title: disclose(newTitle) };
+
+  guestbooks.insert(disclosedGuestbookId, updateGuestbook);
 }
 
-export circuit editMessage(
-    messageId: Bytes<32>,
-    newMessage: Opaque<"string">
-): [] {
-    const disclosedMessageId = disclose(messageId);
-    assert (guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
+export circuit editMessage(messageId: Bytes<32>, newMessage: Opaque<"string">): [] {
+  const disclosedMessageId = disclose(messageId);
+  assert(guestbooksMessages.member(disclosedMessageId), "Message with this ID does not exist");
 
-    const message = guestbooksMessages.lookup(disclosedMessageId);
-    const disclosedGuestbookId = message.guestbookId;
-    
-    // Check that the guestbook exists and is not archived
-    assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist or it has been archived");
-    
-    const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
-    assert (disclosedGuestbook.status != GuestbookStatus.Archived, "Can not edit message: guestbook has been archived");
+  const message = guestbooksMessages.lookup(disclosedMessageId);
+  const disclosedGuestbookId = message.guestbookId;
 
-    const guest = Guest{
-        id: disclose(localSecretKey())
-    };
-    const guestCommit = generateCommit(guest, disclosedGuestbookId);
-    assert (guestCommit == message.author, "Can not edit message: you are not the author");
+  // Check that the guestbook exists and is not archived
+  assert(guestbooks.member(disclosedGuestbookId),
+         "Guestbook with this ID does not exist or it has been archived"
+         );
 
-    // Update the message with new content
-    const updatedMessage = Message{
-        ...message,
-        message: disclose(newMessage)
-    };
-    
-    guestbooksMessages.insert(disclosedMessageId, updatedMessage);
+  const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
+  assert(disclosedGuestbook.status != GuestbookStatus.Archived,
+         "Can not edit message: guestbook has been archived"
+         );
+
+  const guest = Guest { id: disclose(localSecretKey()) };
+  const guestCommit = generateCommit(guest, disclosedGuestbookId);
+  assert(guestCommit == message.author, "Can not edit message: you are not the author");
+
+  // Update the message with new content
+  const updatedMessage = Message { ...message, message: disclose(newMessage) };
+
+  guestbooksMessages.insert(disclosedMessageId, updatedMessage);
 }
 
-export circuit writeMessage(
-    guestbookId: Bytes<32>,
-    guestMessage: Opaque<"string">
-): [] {
+export circuit writeMessage(guestbookId: Bytes<32>, guestMessage: Opaque<"string">): [] {
 
-    const disclosedGuestbookId = disclose(guestbookId);
-    assert (guestbooks.member(disclosedGuestbookId), "Guestbook with this ID does not exist or it has been archived"); // check for guestbook existence
+  const disclosedGuestbookId = disclose(guestbookId);
+  assert(guestbooks.member(disclosedGuestbookId),
+         "Guestbook with this ID does not exist or it has been archived"
+         ); // check for guestbook existence
 
-    const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);    
-    assert (disclosedGuestbook.status != GuestbookStatus.Archived, "Can not write on this guestbook as it has been archived");
+  const disclosedGuestbook = guestbooks.lookup(disclosedGuestbookId);
+  assert(disclosedGuestbook.status != GuestbookStatus.Archived,
+         "Can not write on this guestbook as it has been archived"
+         );
 
-    const guest = Guest{
-        id: disclose(localSecretKey())
-    };
+  const guest = Guest { id: disclose(localSecretKey()) };
 
-    const guestCommit = generateCommit(guest, disclosedGuestbookId);
-    guests.insert(guestCommit);
+  const guestCommit = generateCommit(guest, disclosedGuestbookId);
+  guests.insert(guestCommit);
 
-    const updateGuestbook = Guestbook{
-        ...disclosedGuestbook,
-        messageAmount: (disclosedGuestbook.messageAmount + 1) as Uint<128>,
-    };
+  const updateGuestbook =
+          Guestbook { ...disclosedGuestbook,
+                      messageAmount: (disclosedGuestbook.messageAmount + 1) as Uint<128>, };
 
-    guestbooks.insert(disclosedGuestbookId, updateGuestbook);
+  guestbooks.insert(disclosedGuestbookId, updateGuestbook);
 
-    const messageId = disclose(messageCounter as Field as Bytes<32>);
-    const newMessage = Message{
-        id: messageId,
-        guestbookId: disclosedGuestbookId,
-        author: guestCommit,
-        message: disclose(guestMessage)
-    };
-    messageCounter.increment(1);    
+  const messageId = disclose(messageCounter as Field as Bytes<32>);
+  const newMessage =
+          Message { id: messageId,
+                    guestbookId: disclosedGuestbookId,
+                    author: guestCommit,
+                    message: disclose(guestMessage) };
+  messageCounter.increment(1);
 
-    guestbooksMessages.insert(messageId, newMessage);
+  guestbooksMessages.insert(messageId, newMessage);
 }
